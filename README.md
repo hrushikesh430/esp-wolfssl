@@ -41,28 +41,22 @@ work unchanged. **No code changes are needed in `app_main`; you do not need to
 call `esp_wolfssl_register_stack()` explicitly.**
 
 The only requirement is that the `esp-wolfssl` component must be part of your
-build so that the auto-registration init function gets linked in. The
-recommended way to do that is via the IDF Component Manager:
-
-```bash
-# From the root of your project (the directory that contains main/):
-idf.py add-dependency "espressif/esp-wolfssl^1.0.0"
-```
-
-> Note: until this version of the component is published to the
-> [IDF Component Registry](https://components.espressif.com), use the
-> path-based dependency described below instead.
-
-This creates (or updates) `main/idf_component.yml` with an entry like:
+build so that the auto-registration init function gets linked in. This
+component is not published to the IDF Component Registry, so clone it (see
+[Getting Started](#getting-started)) and add it as a local, path-based
+dependency in your project's `main/idf_component.yml`:
 
 ```yaml
 dependencies:
-  espressif/esp-wolfssl: "^1.0.0"
+  esp-wolfssl:
+    path: /path/to/esp-wolfssl
 ```
 
-The Component Manager then injects `esp-wolfssl` into `main`'s private
-requirements before the build's dependency tree is expanded, so the component
-is pulled in even under `MINIMAL_BUILD` projects without any further wiring.
+Equivalently, vendor the component under `components/esp-wolfssl/` in your
+project, or point `EXTRA_COMPONENT_DIRS` at its location in your top-level
+`CMakeLists.txt`. Either way the Component Manager / build system injects
+`esp-wolfssl` into the build, so it is pulled in even under `MINIMAL_BUILD`
+projects without any further wiring.
 
 Finally, enable the custom stack and (re)build:
 
@@ -76,22 +70,6 @@ idf.py build flash monitor
 
 That's it — `esp-tls` calls now go through wolfSSL.
 
-## Alternative: path-based dependency (in-tree / forks)
-
-If you're working from a fork or vendor the component directly under
-`components/esp-wolfssl/` in your project (e.g. while iterating on changes to
-this repository), use a path-based dependency instead of the registry one. In
-`main/idf_component.yml`:
-
-```yaml
-dependencies:
-  esp-wolfssl:
-    path: ${PROJECT_DIR}/components/esp-wolfssl
-```
-
-The auto-registration mechanism is the same; only the way the component is
-located on disk differs.
-
 ## Verifying
 
 On boot, `esp-tls` logs a single line confirming that the wolfSSL stack
@@ -104,8 +82,7 @@ I (xxx) esp-tls-custom-stack: Custom TLS stack registered successfully
 If you do not see that line and `esp_tls_conn_*` calls return
 `ESP_ERR_INVALID_STATE` / "No TLS stack registered", the `esp-wolfssl`
 component was likely trimmed out of the build — double-check that
-`main/idf_component.yml` lists `esp-wolfssl` (registry or path) as a
-dependency.
+`main/idf_component.yml` lists `esp-wolfssl` (path-based) as a dependency.
 
 # Options (Debugging and more)
 - `esp-wolfssl` options are available under `idf.py menuconfig -> Component Config -> wolfSSL`.
@@ -149,4 +126,3 @@ In general, these are links which will be useful for using both wolfSSL, as well
 - wolfSSL Manual [https://www.wolfssl.com/docs/wolfssl-manual/]()
 - wolfSSL GitHub
  [https://github.com/wolfssl/wolfssl]()
-
