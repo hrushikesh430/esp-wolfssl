@@ -42,6 +42,14 @@ set(COMPONENT_SRCEXCLUDE_1
     "wolfssl/wolfcrypt/src/ext_xmss.c"
     )
 
+# port/esp_tls_wolfssl.c integrates wolfSSL as an esp-tls "custom stack", which
+# relies on esp_tls_custom_stack.h -- a header that only exists in ESP-IDF >= 6.0.
+# On older IDF that header is absent, so exclude the file there; the component
+# still builds and is usable via the native wolfSSL API (see examples/wolfssl_client).
+if(NOT CONFIG_ESP_TLS_CUSTOM_STACK)
+    list(APPEND COMPONENT_SRCEXCLUDE_1 "port/esp_tls_wolfssl.c")
+endif()
+
 idf_component_register(SRC_DIRS "${COMPONENT_SRCDIRS}"
                         INCLUDE_DIRS "${COMPONENT_ADD_INCLUDEDIRS}"
                         REQUIRES "${COMPONENT_REQUIRES}"
