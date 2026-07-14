@@ -318,19 +318,36 @@ static esp_err_t set_client_config(const char *hostname, size_t hostlen, esp_tls
 #endif
     }
 
-    if (cfg->clientcert_buf != NULL && cfg->clientkey_buf != NULL) {
+    /* Resolve the client private key the same way as the server key above:
+     * prefer the legacy clientkey_buf, but also accept the unified key config
+     * (cfg->client_key), detected via __has_include (see the server path). */
+    const unsigned char *clientkey_buf = cfg->clientkey_buf;
+    unsigned int clientkey_bytes = cfg->clientkey_bytes;
+#if defined(__has_include) && __has_include("esp_key_config.h")
+    if (clientkey_buf == NULL && cfg->client_key != NULL) {
+        if (cfg->client_key->source == ESP_KEY_SOURCE_BUFFER) {
+            clientkey_buf = (const unsigned char *)cfg->client_key->buffer.data;
+            clientkey_bytes = (unsigned int)cfg->client_key->buffer.len;
+        } else {
+            ESP_LOGE(TAG, "Unsupported client_key source %d for wolfSSL backend (only ESP_KEY_SOURCE_BUFFER)", cfg->client_key->source);
+            return ESP_FAIL;
+        }
+    }
+#endif /* __has_include("esp_key_config.h") */
+
+    if (cfg->clientcert_buf != NULL && clientkey_buf != NULL) {
         if ((esp_load_wolfssl_verify_buffer(tls,cfg->clientcert_buf, cfg->clientcert_bytes, FILE_TYPE_SELF_CERT, &ret)) != ESP_OK) {
             ESP_LOGE(TAG, "Error in loading certificate verify buffer, returned %d", ret);
             wolfssl_print_error_msg(ret);
             return ESP_ERR_WOLFSSL_CERT_VERIFY_SETUP_FAILED;
         }
-        if ((esp_load_wolfssl_verify_buffer(tls,cfg->clientkey_buf, cfg->clientkey_bytes, FILE_TYPE_SELF_KEY, &ret)) != ESP_OK) {
+        if ((esp_load_wolfssl_verify_buffer(tls,clientkey_buf, clientkey_bytes, FILE_TYPE_SELF_KEY, &ret)) != ESP_OK) {
             ESP_LOGE(TAG, "Error in loading private key verify buffer, returned %d", ret);
             wolfssl_print_error_msg(ret);
             return ESP_ERR_WOLFSSL_CERT_VERIFY_SETUP_FAILED;
         }
-    } else if (cfg->clientcert_buf != NULL || cfg->clientkey_buf != NULL) {
-        ESP_LOGE(TAG, "You have to provide both clientcert_buf and clientkey_buf for mutual authentication");
+    } else if (cfg->clientcert_buf != NULL || clientkey_buf != NULL) {
+        ESP_LOGE(TAG, "You have to provide both clientcert_buf and a client key (clientkey_buf or client_key) for mutual authentication");
         return ESP_FAIL;
     }
 
@@ -431,19 +448,38 @@ static esp_err_t set_server_config(esp_tls_cfg_server_t *cfg, esp_tls_t *tls)
         wolfSSL_CTX_set_verify( (WOLFSSL_CTX *)tls->priv_ctx, WOLFSSL_VERIFY_NONE, NULL);
     }
 
-    if (cfg->servercert_buf != NULL && cfg->serverkey_buf != NULL) {
+    /* Accept the unified key config (cfg->server_key) as well as the legacy
+     * serverkey_buf. Only the in-memory BUFFER source is supported. The unified
+     * esp_key_config_t interface was added to esp-tls after v6.0, so detect it
+     * by header presence (it is absent on v6.0 and earlier, which only have
+     * serverkey_buf) rather than by IDF version number. */
+    const unsigned char *serverkey_buf = cfg->serverkey_buf;
+    unsigned int serverkey_bytes = cfg->serverkey_bytes;
+#if defined(__has_include) && __has_include("esp_key_config.h")
+    if (serverkey_buf == NULL && cfg->server_key != NULL) {
+        if (cfg->server_key->source == ESP_KEY_SOURCE_BUFFER) {
+            serverkey_buf = (const unsigned char *)cfg->server_key->buffer.data;
+            serverkey_bytes = (unsigned int)cfg->server_key->buffer.len;
+        } else {
+            ESP_LOGE(TAG, "Unsupported server_key source %d for wolfSSL backend (only ESP_KEY_SOURCE_BUFFER)", cfg->server_key->source);
+            return ESP_FAIL;
+        }
+    }
+#endif /* __has_include("esp_key_config.h") */
+
+    if (cfg->servercert_buf != NULL && serverkey_buf != NULL) {
         if ((esp_load_wolfssl_verify_buffer(tls,cfg->servercert_buf, cfg->servercert_bytes, FILE_TYPE_SELF_CERT, &ret)) != ESP_OK) {
             ESP_LOGE(TAG, "Error in loading certificate verify buffer, returned %d", ret);
             wolfssl_print_error_msg(ret);
             return ESP_ERR_WOLFSSL_CERT_VERIFY_SETUP_FAILED;
         }
-        if ((esp_load_wolfssl_verify_buffer(tls,cfg->serverkey_buf, cfg->serverkey_bytes, FILE_TYPE_SELF_KEY, &ret)) != ESP_OK) {
+        if ((esp_load_wolfssl_verify_buffer(tls,serverkey_buf, serverkey_bytes, FILE_TYPE_SELF_KEY, &ret)) != ESP_OK) {
             ESP_LOGE(TAG, "Error in loading private key verify buffer, returned %d", ret);
             wolfssl_print_error_msg(ret);
             return ESP_ERR_WOLFSSL_CERT_VERIFY_SETUP_FAILED;
         }
     } else {
-        ESP_LOGE(TAG, "You have to provide both servercert_buf and serverkey_buf for https_server");
+        ESP_LOGE(TAG, "You have to provide a server certificate (servercert_buf) and key (serverkey_buf or server_key) for https_server");
         return ESP_FAIL;
     }
 
